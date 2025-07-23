@@ -35,9 +35,17 @@ random.seed(8888)
 
 
 def main(args) -> None:
-    accelerator = Accelerator()
+    # 使用混合精度训练
+    accelerator = Accelerator(mixed_precision='fp16')
     device = accelerator.device
-    model = AutoModelForCausalLM.from_pretrained(args.model_name)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name,
+        torch_dtype=torch.float16,  # 使用 float16 精度
+        use_cache=False  # 禁用 KV cache 以节省显存
+    )
+    # 启用梯度检查点
+    model.gradient_checkpointing_enable()
+    
     # If use LoRA.
     if args.use_lora:
         peft_config = AdaLoraConfig(
@@ -53,7 +61,7 @@ def main(args) -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     # Load harmful data.
-    train_dataset = load_dataset("PKU-Alignment/PKU-SafeRLHF", split="330k_train")
+    train_dataset = load_dataset("PKU-Alignment/PKU-SafeRLHF", split="train")
     train_bad_loader = create_pku_dataloader_from_dataset(
         tokenizer, train_dataset, batch_size=args.batch_size
     )

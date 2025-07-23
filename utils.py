@@ -71,15 +71,8 @@ def create_pku_dataloader_from_dataset(tokenizer, dataset, fraction=1.0, batch_s
     dataset = dataset.map(
         preproccess,
         batched=True,
-        remove_columns=[
-            "prompt",
-            "response_0",
-            "response_1",
-            "is_response_0_safe",
-            "is_response_1_safe",
-            "better_response_id",
-            "safer_response_id",
-        ],
+        remove_columns=dataset.column_names,
+        batch_size=100  # 添加较小的batch_size来避免长度不匹配问题
     )
     dataset.set_format(
         type="torch", columns=["input_ids", "attention_mask", "start_locs"]
