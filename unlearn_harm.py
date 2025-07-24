@@ -16,10 +16,16 @@ import time
 import numpy as np
 import torch
 from accelerate import Accelerator
+from accelerate.utils import DistributedDataParallelKwargs
 from datasets import load_dataset
 from peft import AdaLoraConfig, TaskType, get_peft_model
 from torch.optim import AdamW
-from transformers import AutoModelForCausalLM, AutoTokenizer, get_scheduler
+
+# change to modelscope
+from modelscope import AutoModelForCausalLM, AutoTokenizer
+
+
+from modelscope import get_scheduler
 from utils import (
     compute_kl,
     create_pku_dataloader_from_dataset,
@@ -35,14 +41,26 @@ random.seed(8888)
 
 
 def main(args) -> None:
-    # 使用混合精度训练
-    accelerator = Accelerator(mixed_precision='fp16')
+    # 配置分布式训练和混合精度
+    ddp_kwargs = DistributedDataParallelKwargs(
+        find_unused_parameters=True,
+        static_graph=False
+    )
+    accelerator = Accelerator(
+        mixed_precision='fp16',  # 启用混合精度训练以节省显存
+        gradient_accumulation_steps=8,  # 增加梯度累积步数，减少显存使用
+        device_placement=True,
+        kwargs_handlers=[ddp_kwargs]  # 添加分布式训练配置
+    )
     device = accelerator.device
+    
+    # 加载模型
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
-        torch_dtype=torch.float16,  # 使用 float16 精度
+        torch_dtype=torch.float16,  # 使用 float16 精度以节省显存
         use_cache=False  # 禁用 KV cache 以节省显存
     )
+    
     # 启用梯度检查点
     model.gradient_checkpointing_enable()
     
@@ -58,6 +76,7 @@ def main(args) -> None:
         model = get_peft_model(model, peft_config)
 
     model.to(device)
+    # 加载tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 
     # Load harmful data.
@@ -98,8 +117,13 @@ def main(args) -> None:
     model.train()
 
     # Reference model for computing KL.
-    pretrained_model = AutoModelForCausalLM.from_pretrained(args.model_name)
+    with accelerator.main_process_first():  # 确保只在主进程加载模型
+        pretrained_model = AutoModelForCausalLM.from_pretrained(
+            args.model_name,
+            torch_dtype=torch.float16  # 参考模型也使用 float16 精度以节省显存
+        )
     pretrained_model.to(device)
+    pretrained_model = accelerator.prepare(pretrained_model)  # 使用accelerator包装参考模型
 
     # Start unlearning.
     bad_loss = 0.0
