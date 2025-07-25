@@ -78,6 +78,10 @@ def main(args) -> None:
     model.to(device)
     # 加载tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    # 设置padding token
+    tokenizer.pad_token = tokenizer.eos_token
+    # 确保模型知道padding token的id
+    model.config.pad_token_id = tokenizer.pad_token_id
 
     # Load harmful data.
     train_dataset = load_dataset("PKU-Alignment/PKU-SafeRLHF", split="train")

@@ -1,4 +1,4 @@
-from transformers import AutoTokenizer, pipeline
+from modelscope import AutoTokenizer, pipeline
 import torch
 
 device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
